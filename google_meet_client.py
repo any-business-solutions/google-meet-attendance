@@ -1,4 +1,5 @@
 import asyncio
+import csv
 from datetime import datetime
 import json
 import os
@@ -165,7 +166,7 @@ class GoogleMeetAPI:
 
         return participants
 
-    async def get_participants_save(self, file_path='attendance'):
+    async def get_participants_save(self, file_path="attendance"):
         active_conference = await self.get_one_active_conference_record()
         if not active_conference:
             print("No active Meeting right now!")
@@ -177,3 +178,78 @@ class GoogleMeetAPI:
         file_path = directory / f"attendance-{now}.json"
         with open(str(file_path), "w") as f:
             json.dump(participants, f)
+
+    async def get_participants_save_csv(
+        self, csv_file_path=None, file_path="attendance"
+    ):
+        """
+        Get participants from active meeting and save them as CSV file.
+        If csv_file_path is provided, read existing names from that file and mark attendance.
+
+        Args:
+            csv_file_path (str): Path to existing CSV file to read names from.
+            file_path (str): Directory path where the CSV file will be saved if csv_file_path is not provided.
+        """
+        active_conference = await self.get_one_active_conference_record()
+        if not active_conference:
+            print("No active Meeting right now!")
+            return
+
+        participants = await self.get_partipicants(active_conference.get("name"))
+        now = datetime.now()
+        timestamp_str = now.strftime("%Y%m%d_%H%M%S")
+
+        # Get all current participants (both signed and anonymous)
+        current_participants = set()
+        current_participants.update(participants.get("signed_users", []))
+        current_participants.update(participants.get("anonymus_users", []))
+
+        if csv_file_path and os.path.exists(csv_file_path):
+            # Read existing CSV file
+            existing_names = []
+            try:
+                with open(csv_file_path, "r", newline="", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        existing_names.append(row.get("Name", ""))
+            except Exception as e:
+                print(f"Error reading CSV file: {e}")
+                return
+
+            # Prepare data with existing names and attendance marks
+            csv_data = []
+            for name in existing_names:
+                if name:  # Skip empty names
+                    attendance = 1 if name in current_participants else 0
+                    csv_data.append({"Name": name, timestamp_str: attendance})
+
+            # Add any participants not in the original list
+            for participant in current_participants:
+                if participant not in existing_names:
+                    csv_data.append({"Name": participant, timestamp_str: 1})
+                    print(f"New participant found: {participant}")
+
+            # Save to new file in the specified directory
+            directory = Path(file_path)
+            directory.mkdir(parents=True, exist_ok=True)
+            output_file = directory / f"attendance-{timestamp_str}.csv"
+        else:
+            # Create new file with current participants
+            directory = Path(file_path)
+            directory.mkdir(parents=True, exist_ok=True)
+            output_file = directory / f"attendance-{timestamp_str}.csv"
+
+            csv_data = []
+            for name in current_participants:
+                csv_data.append({"Name": name, timestamp_str: 1})
+
+        # Write to CSV file
+        if csv_data:
+            with open(str(output_file), "w", newline="", encoding="utf-8") as f:
+                fieldnames = ["Name", timestamp_str]
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(csv_data)
+            print(f"Attendance saved to: {output_file}")
+        else:
+            print("No participants found to save.")

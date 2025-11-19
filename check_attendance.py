@@ -14,7 +14,7 @@ async def main():
     # Save participants of the active meeting to a file
     for _ in range(3):
         print("Checking attendance...")
-        await meet_api.get_participants_save()
+        await meet_api.get_participants_save_csv()
         print("Attendance saved. Waiting for the next check...")
         time.sleep(60*30)
 
